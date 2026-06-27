@@ -1,6 +1,13 @@
 const std = @import("std");
 const posix = std.posix;
 const ESC = 27;
+
+const initial_velocity_min: f32 = -0.5;
+const initial_velocity_max: f32 = 0.5;
+const max_speed: f32 = 0.5;
+const alignment_radius: f32 = 25.0;
+const alignment_strength: f32 = 0.1;
+
 // ↑  U+2191  Up
 // ↗  U+2197  Up Right
 // →  U+2192  Right
@@ -21,6 +28,43 @@ const Vector = struct {
         self.y += other.y;
     }
 
+    pub fn sub(self: *Vector, other: Vector) void {
+        self.x -= other.x;
+        self.y -= other.y;
+    }
+
+    pub fn mul(self: *Vector, other: Vector) void {
+        self.x *= other.x;
+        self.y *= other.y;
+    }
+
+    pub fn scale(self: *Vector, scalar: f32) void {
+        self.x *= scalar;
+        self.y *= scalar;
+    }
+
+    pub fn div(self: *Vector, scalar: f32) void {
+        self.x /= scalar;
+        self.y /= scalar;
+    }
+
+    pub fn dist(self: Vector, other: Vector) f32 {
+        const dx = other.x - self.x;
+        const dy = other.y - self.y;
+        return @sqrt(dx * dx + dy * dy);
+    }
+
+    pub fn mag(self: Vector) f32 {
+        return @sqrt(self.x * self.x + self.y * self.y);
+    }
+
+    pub fn setMag(self: *Vector, magnitude: f32) void {
+        const current = self.mag();
+        if (current == 0.0) return;
+
+        self.scale(magnitude / current);
+    }
+
     pub fn randomVector(random: std.Random, min: f32, max: f32) Vector {
         return Vector{
             .x = min + random.float(f32) * (max - min),
@@ -28,10 +72,13 @@ const Vector = struct {
         };
     }
 
-    pub fn randomPosition(random: std.Random, max_row: f32, max_col: f32) Vector {
+    pub fn randomPosition(random: std.Random, max_row: u32, max_col: u32) Vector {
+        const max_row_f: f32 = @floatFromInt(max_row);
+        const max_col_f: f32 = @floatFromInt(max_col);
+
         return .{
-            .x = 1.0 + random.float(f32) * (max_row - 1.0),
-            .y = 1.0 + random.float(f32) * (max_col - 1.0),
+            .x = 1.0 + random.float(f32) * (max_row_f - 1.0),
+            .y = 1.0 + random.float(f32) * (max_col_f - 1.0),
         };
     }
 };
@@ -48,17 +95,55 @@ const Boid = struct {
         };
     }
 
-    pub fn randomBoid(random: std.Random, max_row: f32, max_col: f32) Boid {
+    pub fn randomBoid(random: std.Random, max_row: u32, max_col: u32) Boid {
         return .{
             .position = Vector.randomPosition(random, max_row, max_col),
-            .velocity = Vector.randomVector(random, -1.0, 1.0),
+            .velocity = Vector.randomVector(random, initial_velocity_min, initial_velocity_max),
         };
     }
 
-    pub fn update(self: *Boid, random: std.Random) void {
-        self.velocity.add(Vector.randomVector(random, -0.25, 0.25));
+    pub fn update(self: *Boid) void {
+        self.velocity.add(self.acceleration);
+        self.velocity.setMag(max_speed);
         self.position.add(self.velocity);
         self.acceleration = .{};
+    }
+
+    pub fn alignmentForce(self: *Boid, flock: []const Boid) Vector {
+        var avg_velocity = Vector{};
+        var num_boids: f32 = 0;
+
+        for (flock) |boid| {
+            const d = self.position.dist(boid.position);
+            if (d > 0.0 and d < alignment_radius) {
+                avg_velocity.add(boid.velocity);
+                num_boids += 1;
+            }
+        }
+
+        if (num_boids > 0) {
+            avg_velocity.div(num_boids);
+            avg_velocity.sub(self.velocity);
+            avg_velocity.scale(alignment_strength);
+        }
+
+        return avg_velocity;
+    }
+
+    pub fn wrapAround(self: *Boid, rows: u32, cols: u32) void {
+        const max_row: f32 = @floatFromInt(rows);
+        const max_col: f32 = @floatFromInt(cols);
+
+        if (self.position.x < 1.0) self.position.x = max_row;
+        if (self.position.x > max_row) self.position.x = 1.0;
+
+        if (self.position.y < 1.0) self.position.y = max_col;
+        if (self.position.y > max_col) self.position.y = 1.0;
+    }
+
+    pub fn steerBoids(self: *Boid, flock: []const Boid) void {
+        const alignment = self.alignmentForce(flock);
+        self.acceleration.add(alignment);
     }
 };
 
@@ -72,8 +157,10 @@ pub fn main(init: std.process.Init) !void {
 
     if (rc == -1) return error.IoctlFailed;
 
-    const window_row: f32 = @floatFromInt(window_size.row);
-    const window_col: f32 = @floatFromInt(window_size.col);
+    const window_rows: u32 = @intCast(window_size.row);
+    const window_cols: u32 = @intCast(window_size.col);
+    // const window_rows_f: f32 = @floatFromInt(window_rows);
+    // const window_cols_f: f32 = @floatFromInt(window_cols);
 
     var stdout = std.Io.File.stdout().writer(init.io, &.{});
     const stdout_writer = &stdout.interface;
@@ -90,10 +177,8 @@ pub fn main(init: std.process.Init) !void {
     var flock: [100]Boid = undefined;
 
     for (&flock) |*boid| {
-        boid.* = Boid.randomBoid(random, window_size.row, window_size.col);
+        boid.* = Boid.randomBoid(random, window_rows, window_cols);
     }
-
-    // var my_boid = Boid.init(window_row / 2, window_col / 2, 0, 0);
 
     const stdin_file = std.Io.File.stdin();
     var stdin = stdin_file.reader(init.io, &.{});
@@ -101,6 +186,7 @@ pub fn main(init: std.process.Init) !void {
 
     const old_termios = try posix.tcgetattr(stdin_file.handle);
     var new_termios = old_termios;
+
     new_termios.lflag.ICANON = false;
     new_termios.lflag.ECHO = false;
     new_termios.cc[@intFromEnum(posix.V.MIN)] = 0;
@@ -113,16 +199,15 @@ pub fn main(init: std.process.Init) !void {
     var key_vec = [_][]u8{&key_buf};
 
     while (true) {
-        // my_boid.update(random);
         try stdout_writer.print("\x1b[2J\x1b[H", .{}); // clear screen, move cursor home
 
         for (&flock) |*boid| {
-            boid.update(random);
-            const row_clamp = @min(@max(boid.position.x, 1.0), window_row);
-            const col_clamp = @min(@max(boid.position.y, 1.0), window_col);
+            boid.steerBoids(&flock);
+            boid.update();
+            boid.wrapAround(window_rows, window_cols);
 
-            const row: u16 = @intFromFloat(row_clamp);
-            const col: u16 = @intFromFloat(col_clamp);
+            const row: u16 = @intFromFloat(boid.position.x);
+            const col: u16 = @intFromFloat(boid.position.y);
 
             try stdout_writer.print("\x1b[{};{}H#", .{ row, col });
         }
