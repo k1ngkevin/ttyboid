@@ -15,6 +15,7 @@ const cohesion_strength: f32 = 0.03;
 const separation_radius: f32 = 5.0;
 const separation_strength: f32 = 0.4;
 
+const num_boids = 100;
 // ↑  U+2191  Up
 // ↗  U+2197  Up Right
 // →  U+2192  Right
@@ -114,74 +115,6 @@ const Boid = struct {
         self.acceleration = .{};
     }
 
-    pub fn alignmentForce(self: *Boid, flock: []const Boid) Vector {
-        var steering = Vector{};
-        var num_boids: f32 = 0;
-
-        for (flock) |boid| {
-            const d = self.position.dist(boid.position);
-            if (d > 0.0 and d < alignment_radius) {
-                steering.add(boid.velocity);
-                num_boids += 1;
-            }
-        }
-
-        if (num_boids > 0) {
-            steering.div(num_boids);
-            steering.sub(self.velocity);
-            steering.scale(alignment_strength);
-        }
-
-        return steering;
-    }
-
-    pub fn cohesionForce(self: *Boid, flock: []const Boid) Vector {
-        var steering = Vector{};
-        var num_boids: f32 = 0;
-
-        for (flock) |boid| {
-            const d = self.position.dist(boid.position);
-            if (d > 0.0 and d < cohesion_radius) {
-                steering.add(boid.position);
-                num_boids += 1;
-            }
-        }
-
-        if (num_boids > 0) {
-            steering.div(num_boids);
-            steering.sub(self.position);
-            steering.sub(self.velocity);
-            steering.scale(cohesion_strength);
-        }
-
-        return steering;
-    }
-
-    pub fn seperationForce(self: *Boid, flock: []const Boid) Vector {
-        var steering = Vector{};
-        var num_boids: f32 = 0;
-
-        for (flock) |boid| {
-            const d = self.position.dist(boid.position);
-            if (d > 0.001 and d < separation_radius) {
-                var diff = self.position;
-                diff.sub(boid.position);
-
-                diff.div(d);
-                steering.add(diff);
-                num_boids += 1;
-            }
-        }
-
-        if (num_boids > 0) {
-            steering.div(num_boids);
-            steering.sub(self.velocity);
-            steering.scale(separation_strength);
-        }
-
-        return steering;
-    }
-
     pub fn wrapAround(self: *Boid, rows: u32, cols: u32) void {
         const max_row: f32 = @floatFromInt(rows);
         const max_col: f32 = @floatFromInt(cols);
@@ -193,13 +126,66 @@ const Boid = struct {
         if (self.position.y > max_col) self.position.y = 1.0;
     }
 
+    pub fn flockForces(self: *Boid, flock: []const Boid) Vector {
+        var alignment = Vector{};
+        var cohesion = Vector{};
+        var separation = Vector{};
+
+        var alignment_count: f32 = 0;
+        var cohesion_count: f32 = 0;
+        var separation_count: f32 = 0;
+
+        for (flock) |boid| {
+            const d = self.position.dist(boid.position);
+            if (d > 0.001 and d < alignment_radius) {
+                alignment.add(boid.velocity);
+                alignment_count += 1;
+            }
+
+            if (d > 0.001 and d < cohesion_radius) {
+                cohesion.add(boid.position);
+                cohesion_count += 1;
+            }
+
+            if (d > 0.001 and d < separation_radius) {
+                var diff = self.position;
+                diff.sub(boid.position);
+
+                diff.div(d);
+                separation.add(diff);
+                separation_count += 1;
+            }
+        }
+
+        var steering = Vector{};
+
+        if (alignment_count > 0) {
+            alignment.div(alignment_count);
+            alignment.sub(self.velocity);
+            alignment.scale(alignment_strength);
+            steering.add(alignment);
+        }
+
+        if (cohesion_count > 0) {
+            cohesion.div(cohesion_count);
+            cohesion.sub(self.position);
+            cohesion.sub(self.velocity);
+            cohesion.scale(cohesion_strength);
+            steering.add(cohesion);
+        }
+
+        if (separation_count > 0) {
+            separation.div(separation_count);
+            separation.sub(self.velocity);
+            separation.scale(separation_strength);
+            steering.add(separation);
+        }
+
+        return steering;
+    }
+
     pub fn steerBoids(self: *Boid, flock: []const Boid) void {
-        const alignment = self.alignmentForce(flock);
-        const cohesion = self.cohesionForce(flock);
-        const seperation = self.seperationForce(flock);
-        self.acceleration.add(cohesion);
-        self.acceleration.add(alignment);
-        self.acceleration.add(seperation);
+        self.acceleration.add(self.flockForces(flock));
     }
 };
 
@@ -230,7 +216,7 @@ pub fn main(init: std.process.Init) !void {
     var prng = std.Random.DefaultPrng.init(seed);
     const random = prng.random();
 
-    var flock: [100]Boid = undefined;
+    var flock: [num_boids]Boid = undefined;
 
     for (&flock) |*boid| {
         boid.* = Boid.randomBoid(random, window_rows, window_cols);
