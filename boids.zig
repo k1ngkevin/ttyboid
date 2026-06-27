@@ -5,7 +5,7 @@ const ESC = 27;
 const initial_velocity_min: f32 = -0.5;
 const initial_velocity_max: f32 = 0.5;
 const max_speed: f32 = 0.5;
-const alignment_radius: f32 = 25.0;
+const alignment_radius: f32 = 15.0;
 const alignment_strength: f32 = 0.1;
 
 // ↑  U+2191  Up
@@ -16,8 +16,6 @@ const alignment_strength: f32 = 0.1;
 // ↙  U+2199  Down Left
 // ←  U+2190  Left
 // ↖  U+2196  Up Left
-
-// try stdout.print("\x1b[10;20H@", .{}); row 10 col 20
 
 const Vector = struct {
     x: f32 = 0.0,
@@ -110,24 +108,46 @@ const Boid = struct {
     }
 
     pub fn alignmentForce(self: *Boid, flock: []const Boid) Vector {
-        var avg_velocity = Vector{};
+        var steering = Vector{};
         var num_boids: f32 = 0;
 
         for (flock) |boid| {
             const d = self.position.dist(boid.position);
             if (d > 0.0 and d < alignment_radius) {
-                avg_velocity.add(boid.velocity);
+                steering.add(boid.velocity);
                 num_boids += 1;
             }
         }
 
         if (num_boids > 0) {
-            avg_velocity.div(num_boids);
-            avg_velocity.sub(self.velocity);
-            avg_velocity.scale(alignment_strength);
+            steering.div(num_boids);
+            steering.sub(self.velocity);
+            steering.scale(alignment_strength);
         }
 
-        return avg_velocity;
+        return steering;
+    }
+
+    pub fn cohesionForce(self: *Boid, flock: []const Boid) Vector {
+        var steering = Vector{};
+        var num_boids: f32 = 0;
+
+        for (flock) |boid| {
+            const d = self.position.dist(boid.position);
+            if (d > 0.0 and d < alignment_radius) {
+                steering.add(boid.position);
+                num_boids += 1;
+            }
+        }
+
+        if (num_boids > 0) {
+            steering.div(num_boids);
+            steering.sub(self.position);
+            steering.sub(self.velocity);
+            steering.scale(alignment_strength);
+        }
+
+        return steering;
     }
 
     pub fn wrapAround(self: *Boid, rows: u32, cols: u32) void {
@@ -143,6 +163,8 @@ const Boid = struct {
 
     pub fn steerBoids(self: *Boid, flock: []const Boid) void {
         const alignment = self.alignmentForce(flock);
+        const cohesion = self.cohesionForce(flock);
+        self.acceleration.add(cohesion);
         self.acceleration.add(alignment);
     }
 };
