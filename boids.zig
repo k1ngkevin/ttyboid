@@ -5,8 +5,15 @@ const ESC = 27;
 const initial_velocity_min: f32 = -0.5;
 const initial_velocity_max: f32 = 0.5;
 const max_speed: f32 = 0.5;
-const alignment_radius: f32 = 15.0;
-const alignment_strength: f32 = 0.1;
+
+const alignment_radius: f32 = 10.0;
+const alignment_strength: f32 = 0.04;
+
+const cohesion_radius: f32 = 10.0;
+const cohesion_strength: f32 = 0.03;
+
+const separation_radius: f32 = 5.0;
+const separation_strength: f32 = 0.4;
 
 // ↑  U+2191  Up
 // ↗  U+2197  Up Right
@@ -134,7 +141,7 @@ const Boid = struct {
 
         for (flock) |boid| {
             const d = self.position.dist(boid.position);
-            if (d > 0.0 and d < alignment_radius) {
+            if (d > 0.0 and d < cohesion_radius) {
                 steering.add(boid.position);
                 num_boids += 1;
             }
@@ -144,7 +151,32 @@ const Boid = struct {
             steering.div(num_boids);
             steering.sub(self.position);
             steering.sub(self.velocity);
-            steering.scale(alignment_strength);
+            steering.scale(cohesion_strength);
+        }
+
+        return steering;
+    }
+
+    pub fn seperationForce(self: *Boid, flock: []const Boid) Vector {
+        var steering = Vector{};
+        var num_boids: f32 = 0;
+
+        for (flock) |boid| {
+            const d = self.position.dist(boid.position);
+            if (d > 0.001 and d < separation_radius) {
+                var diff = self.position;
+                diff.sub(boid.position);
+
+                diff.div(d);
+                steering.add(diff);
+                num_boids += 1;
+            }
+        }
+
+        if (num_boids > 0) {
+            steering.div(num_boids);
+            steering.sub(self.velocity);
+            steering.scale(separation_strength);
         }
 
         return steering;
@@ -164,8 +196,10 @@ const Boid = struct {
     pub fn steerBoids(self: *Boid, flock: []const Boid) void {
         const alignment = self.alignmentForce(flock);
         const cohesion = self.cohesionForce(flock);
+        const seperation = self.seperationForce(flock);
         self.acceleration.add(cohesion);
         self.acceleration.add(alignment);
+        self.acceleration.add(seperation);
     }
 };
 
