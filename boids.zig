@@ -4,7 +4,7 @@ const ESC = 27;
 
 const initial_velocity_min: f32 = -0.5;
 const initial_velocity_max: f32 = 0.5;
-const max_speed: f32 = 0.5;
+const max_speed: f32 = 0.4;
 
 const alignment_radius: f32 = 10.0;
 const alignment_strength: f32 = 0.04;
@@ -16,14 +16,30 @@ const separation_radius: f32 = 5.0;
 const separation_strength: f32 = 0.3;
 
 const num_boids = 100;
-// ↑  U+2191  Up
-// ↗  U+2197  Up Right
-// →  U+2192  Right
-// ↘  U+2198  Down Right
-// ↓  U+2193  Down
-// ↙  U+2199  Down Left
-// ←  U+2190  Left
-// ↖  U+2196  Up Left
+
+const Direction = enum {
+    up,
+    up_right,
+    right,
+    down_right,
+    down,
+    down_left,
+    left,
+    up_left,
+};
+
+pub fn charFromDirection(direction: Direction) u21 {
+    return switch (direction) {
+        .up => '↑',
+        .up_right => '↗',
+        .right => '→',
+        .down_right => '↘',
+        .down => '↓',
+        .down_left => '↙',
+        .left => '←',
+        .up_left => '↖',
+    };
+}
 
 const Vector = struct {
     x: f32 = 0.0,
@@ -187,6 +203,29 @@ const Boid = struct {
     pub fn steerBoids(self: *Boid, flock: []const Boid) void {
         self.acceleration.add(self.flockForces(flock));
     }
+
+    pub fn getBoidChar(self: *Boid) u21 {
+        const radians = std.math.atan2(self.velocity.y, self.velocity.x);
+        const degrees = radians * 180.0 / std.math.pi;
+
+        if (degrees >= -22.5 and degrees < 22.5) {
+            return charFromDirection(.right);
+        } else if (degrees >= 22.5 and degrees < 67.5) {
+            return charFromDirection(.down_right);
+        } else if (degrees >= 67.5 and degrees < 112.5) {
+            return charFromDirection(.down);
+        } else if (degrees >= 112.5 and degrees < 157.5) {
+            return charFromDirection(.down_left);
+        } else if (degrees >= 157.5 or degrees < -157.5) {
+            return charFromDirection(.left);
+        } else if (degrees >= -157.5 and degrees < -112.5) {
+            return charFromDirection(.up_left);
+        } else if (degrees >= -112.5 and degrees < -67.5) {
+            return charFromDirection(.up);
+        } else {
+            return charFromDirection(.up_right);
+        }
+    }
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -249,7 +288,7 @@ pub fn main(init: std.process.Init) !void {
             const row: u16 = @intFromFloat(boid.position.y);
             const col: u16 = @intFromFloat(boid.position.x);
 
-            try stdout_writer.print("\x1b[{};{}H#", .{ row, col });
+            try stdout_writer.print("\x1b[{};{}H{u}", .{ row, col, boid.getBoidChar() });
         }
         try stdout_writer.flush();
 
