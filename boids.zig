@@ -13,7 +13,7 @@ const cohesion_radius: f32 = 10.0;
 const cohesion_strength: f32 = 0.03;
 
 const separation_radius: f32 = 5.0;
-const separation_strength: f32 = 0.4;
+const separation_strength: f32 = 0.3;
 
 const num_boids = 100;
 // ↑  U+2191  Up
@@ -83,8 +83,8 @@ const Vector = struct {
         const max_col_f: f32 = @floatFromInt(max_col);
 
         return .{
-            .x = 1.0 + random.float(f32) * (max_row_f - 1.0),
-            .y = 1.0 + random.float(f32) * (max_col_f - 1.0),
+            .x = 1.0 + random.float(f32) * (max_col_f - 1.0),
+            .y = 1.0 + random.float(f32) * (max_row_f - 1.0),
         };
     }
 };
@@ -119,11 +119,11 @@ const Boid = struct {
         const max_row: f32 = @floatFromInt(rows);
         const max_col: f32 = @floatFromInt(cols);
 
-        if (self.position.x < 1.0) self.position.x = max_row;
-        if (self.position.x > max_row) self.position.x = 1.0;
+        if (self.position.x < 1.0) self.position.x = max_col;
+        if (self.position.x > max_col) self.position.x = 1.0;
 
-        if (self.position.y < 1.0) self.position.y = max_col;
-        if (self.position.y > max_col) self.position.y = 1.0;
+        if (self.position.y < 1.0) self.position.y = max_row;
+        if (self.position.y > max_row) self.position.y = 1.0;
     }
 
     pub fn flockForces(self: *Boid, flock: []const Boid) Vector {
@@ -201,8 +201,6 @@ pub fn main(init: std.process.Init) !void {
 
     const window_rows: u32 = @intCast(window_size.row);
     const window_cols: u32 = @intCast(window_size.col);
-    // const window_rows_f: f32 = @floatFromInt(window_rows);
-    // const window_cols_f: f32 = @floatFromInt(window_cols);
 
     var stdout = std.Io.File.stdout().writer(init.io, &.{});
     const stdout_writer = &stdout.interface;
@@ -248,8 +246,8 @@ pub fn main(init: std.process.Init) !void {
             boid.update();
             boid.wrapAround(window_rows, window_cols);
 
-            const row: u16 = @intFromFloat(boid.position.x);
-            const col: u16 = @intFromFloat(boid.position.y);
+            const row: u16 = @intFromFloat(boid.position.y);
+            const col: u16 = @intFromFloat(boid.position.x);
 
             try stdout_writer.print("\x1b[{};{}H#", .{ row, col });
         }
