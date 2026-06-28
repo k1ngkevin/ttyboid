@@ -1,5 +1,7 @@
 # ttyboids
 
+https://github.com/user-attachments/assets/4095dadb-df68-42a0-ab0d-72f78fff3841
+
 A tiny terminal boids simulation written in Zig. `ttyboids` fills your terminal
 with a flock of arrow characters that steer around each other using simple local
 rules. There is no graphics library or game engine here: the program talks
